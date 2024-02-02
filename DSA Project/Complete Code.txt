@@ -1,0 +1,1132 @@
+#include<iostream>
+#include<string>
+#include<list>
+#include<queue>
+#include<stack>
+#include<vector>
+#include<utility>
+#include<random>
+#include<cmath>
+
+using namespace std;
+
+const double PI = 3.14159265358979323846;
+
+struct nodeinfo {	//device info
+
+	double x = 0, y = 0;
+	int identity;
+	string msg = " ";
+
+	bool operator==(nodeinfo obj) {
+		return x == obj.x && y == obj.y && identity == obj.identity;
+	}
+
+	void displayMsg() {
+		cout << " " << identity << " : Msg : " << msg << "\n";
+	}
+
+	void setMsg(string m) {
+		msg = m;
+	}
+
+	void setId(int id) {
+		identity = id;
+	}
+
+};
+
+template<class x>
+bool operator==(pair<x, double> obj1, pair<x, double> obj2) {
+	if (obj1.first == obj2.first && obj1.second == obj2.second) {
+		return true;
+	}
+	else return false;
+}
+
+template <class t>
+struct gnode {
+	list<pair<t, double>>adj_vertics;	//pair has node info and relative distance
+	list<t>neighborlist;	// used in compass routing so that every time declaration is not needed
+	t vertex;
+};
+
+template <class t>
+class graph_al {
+protected:
+	vector<gnode<t>>graph;							//expandable array to add more vertices
+	list<t> nodelist;								//helps in traversel	(it is a list that has only vertices of type nodeinfo )
+	list<t> nodesNotInNetwork;						//for disconnected devices
+	bool dir;										//directed(1) or undirected(0) graphs
+	bool connected;
+	int nodeNum = 0;								//would represent a node ( it would be assigned as identity in nodeinfo )
+	double avgDegree;
+	int maxDegree;
+
+public:
+	//def const
+	graph_al() {
+		cout << " Default const of graph class called" << endl;
+	}
+
+	//para const
+	graph_al(bool dir_) {
+		cout << "Parameterised const called" << endl;
+		dir = dir_;
+	}
+
+	//setter and getter for type of graph
+
+	void setdir(bool dir_) {
+		cout << "Setting type of graph called" << endl;
+		dir = dir_;
+
+	}
+
+	bool getdir() {
+		cout << "Getting type of graph called" << endl;
+		return dir;
+	}
+
+	bool isEmpty() {
+
+		// cout << "isEmpty() called" << endl;
+		if (graph.empty())
+			return true;
+		else
+			return false;
+	}
+
+	//destructor
+	~graph_al() {
+		cout << "\n\n Destructor called" << endl;
+		if (!isEmpty())
+			graph.clear(); //deletes all entries
+	}
+
+	void setAvgMaxDegree() {
+
+		int max = 0;
+		double sum = 0;
+		if (!isEmpty()) {						//graph not empty
+
+			max = graph[0].adj_vertics.size();
+			sum = graph[0].adj_vertics.size();
+			for (int i = 1; i < graph.size();i++) {
+
+				sum += graph[i].adj_vertics.size();
+				if (graph[i].adj_vertics.size() > max) {
+
+					max = graph[i].adj_vertics.size();
+
+				}
+
+			}
+
+		}
+
+		avgDegree = sum / graph.size(); //avg degree of a graph
+		maxDegree = max;				//maximum degree in graph (the highest no. of edges a node makes in a network)
+	}
+
+	double getavgDegree() {
+
+		return avgDegree;
+
+	}
+
+	int getMaxDegree() {
+
+		return maxDegree;
+	}
+
+	int noOfVertics() {
+		cout << "No. of devices(vertics): " << endl;
+		return graph.size();
+	}
+
+	int noOfEdges() {
+		cout << "No. of connection(edges): " << endl;
+		int sum = 0;
+		for (int i = 0; i < graph.size(); i++) {
+			sum += graph[i].adj_vertics.size();			//connections of one device
+		}
+		if (dir)
+			return sum;
+		else
+			return sum / 2;
+	}
+
+	//t is nodeinfo
+	void insertVertex(nodeinfo v) {		//check for duplicates
+
+		//cout << "Inserting device " << v.identity << " at " << "(" << v.x << ", " << v.y << ")" << endl;
+
+		bool checkv = false;
+		for (int i = 0; i < graph.size(); i++) {
+
+			if (graph[i].vertex.x == v.x && graph[i].vertex.y == v.y)	//loc preoccupied
+			{
+				checkv = true;
+				cout << "Duplicate entry!! Device " << graph[i].vertex.identity << "already present at this location" << endl;
+				return;
+			}
+
+		}
+
+		if (!checkv) {				//no duplicates found
+			gnode<t>obj;
+			v.identity = nodeNum;	//instead of characters we use numbers to denote nodes
+			obj.vertex = v;
+
+			//cout << "Inserting device " << v.identity << " at " << "(" << v.x << ", " << v.y << ")" << endl;
+
+			nodeNum++;
+			graph.push_back(obj);	//gnode added-nodeinfo
+		}
+	}
+
+	void insertEdge(int transmRange) {		//t is nodeinfo //populate adj_vertics list with nodes within transmission range
+
+		cout << "\n Connecting Devices in Network... \n" << endl;
+
+		pair<t, double> p1;//nodeinfo and relative distance
+		pair<t, double> p2;//nodeinfo and relative distance
+
+		int index1 = -1;
+
+		typename list<pair<t, double>>::iterator temp1;
+		typename list<pair<t, double>>::iterator temp2;
+
+		//determining nodes in transmission range of v1
+		for (int i = 0; i < graph.size(); i++) {
+
+			index1 = i;						//node for which we are determining other nodes in its range (active node)
+
+			for (int j = 0; j < graph.size(); j++) {
+
+				if (j != index1) {			//not to check itself
+
+					double distance = distancecalc(graph[index1].vertex, graph[j].vertex);
+
+					if (distance <= transmRange) {
+
+						p1.first = graph[j].vertex;		//nodeinfo
+						p1.second = distance;			//relative distance
+
+						temp1 = find(graph[index1].adj_vertics.begin(), graph[index1].adj_vertics.end(), p1);	//look for device connection with v1
+
+						if (temp1 == graph[index1].adj_vertics.end()) {											//device is not already in connection with v1
+
+							graph[index1].adj_vertics.push_back(p1);	//inserting device to v1
+
+						}
+
+						p2.first = graph[index1].vertex;	//nodeinfo
+						p2.second = distance;				//relative distance
+
+						temp2 = find(graph[j].adj_vertics.begin(), graph[j].adj_vertics.end(), p2);		//If a is in transmission range of b then b is also in transmission range of a																					
+
+						if (temp2 == graph[j].adj_vertics.end()) //v1 is not already in adjver of v2
+						{
+							graph[j].adj_vertics.push_back(p2); //inserting v1 to v2
+						}
+
+					}
+				}
+			}
+		}
+
+		//after checking for all nodes within transmission range, we check for nodes not in Nework
+		for (int j = 0; j < graph.size(); j++) {
+
+			if (graph[j].adj_vertics.size() == 0) {//no node in its transmission range
+
+				nodesNotInNetwork.push_back(graph[j].vertex);
+
+			}
+
+		}
+
+	}
+
+	double distancecalc(t v1, t v2) {		//t is nodeinfo
+
+		return sqrt(pow((v1.x - v2.x), 2) + pow((v1.y - v2.y), 2));
+
+	}
+
+	bool edgeExists(int identity1, int identity2) { //checks if v1v2 edge exists
+		cout << "Checking connection between devices " << identity1 << " and " << identity2 << endl;
+		bool checkv1v2 = false;
+		bool checkv2v1 = false;
+
+		t v1 = getNodeInfo(identity1);
+		t v2 = getNodeInfo(identity2);
+
+
+		pair<t, double> temp1;
+		temp1.first = v1;//nodeinfo
+		temp1.second = distancecalc(v1, v2);//distance
+		pair<t, double> temp2;
+		temp2.first = v2; //nodeinfo
+		temp2.second = distancecalc(v2, v1);//distance
+
+		typename list<pair<t, double>>::iterator ptr1;
+		typename list<pair<t, double>>::iterator ptr2;
+
+		if (!isEmpty()) {
+
+			if (v1.identity == -1 || v2.identity == -1) { //one of the vertex not found in graph
+				cout << "Invalid vertex entered!!" << endl;
+				return false;
+			}
+
+			if (v1.identity != -1 && v2.identity != -1) { //both of the vertics found in graph
+				cout << "Valid vertics" << endl;
+
+				if (graph[v1.identity].adj_vertics.size() > 0) {
+					//see if v2 is adj to v1
+					//seraching list of v1
+					ptr1 = find(graph[v1.identity].adj_vertics.begin(), graph[v1.identity].adj_vertics.end(), temp2);
+					if (ptr1 != graph[v1.identity].adj_vertics.end())//found
+						checkv1v2 = true;
+				}
+				if (graph[v2.identity].adj_vertics.size() > 0) {
+					//see if v1 is adj to v2
+					//seraching list of v2
+					ptr2 = find(graph[v2.identity].adj_vertics.begin(), graph[v2.identity].adj_vertics.end(), temp1);
+
+					if (ptr2 != graph[v2.identity].adj_vertics.end())//found
+						checkv2v1 = true;
+				}
+
+
+				if (!dir) { //undirected
+					if (checkv1v2 && checkv2v1) //found in both adjList
+						return true;
+					else
+						return false;
+				}
+				else {  //directed
+					if (checkv1v2) { //v2 found in adjacency list of v1 i.e v1v2 edge exists
+						return true;
+					}
+					else { ////do not exists in adjList
+						return false;
+					}
+				}
+
+			}
+		}
+		else { cout << "Empty graph" << endl; }
+	}
+
+	t getNodeInfo(int identity) {
+		t obj;	//nodeinfo
+		obj.x = -1;
+		obj.y = -1;
+		obj.identity = -1;
+		bool found = false;
+		for (int i = 0; i < graph.size(); i++) {
+
+			if (graph[i].vertex.identity == identity) {
+
+				found = true;
+				return graph[i].vertex;		//returns nodeinfo of matching identity
+
+			}
+
+		}
+
+		if (found == false) {	//not found
+
+			//cout << " Device does not exist in network" << endl;
+			return obj;
+
+		}
+
+	}
+
+	void delvertex(int identity) {//takes Identity of that vertex
+		cout << "Deleting device " << identity << endl;
+
+		if (!isEmpty()) {
+
+			//see if v is in graph
+			t v = getNodeInfo(identity);
+
+			if (v.identity != -1) {//valid vertex
+
+				pair<t, double>p;
+				p.first = v;
+
+				typename list<pair<t, double>>::iterator ptr;
+				typename vector<gnode<t>>::iterator temp;
+
+				temp = graph.begin();
+
+				graph.erase(temp + v.identity); //remove vertex //identity=index
+
+				for (int i = 0; i < graph.size(); i++) {
+					p.second = distancecalc(v, graph[i].vertex);
+					ptr = find(graph[i].adj_vertics.begin(), graph[i].adj_vertics.end(), p);
+					if (ptr != graph[i].adj_vertics.end()) {	//found
+						graph[i].adj_vertics.erase(ptr);		//remove the conections of v with other vertics
+					}
+				}
+
+			}
+			else {
+
+				cout << "Invalid vertex!! Not present in graph" << endl;
+				return;
+			}
+		}
+
+		else { cout << "Empty graph" << endl; }
+
+	}
+
+	void deledge(int identity1, int identity2) {
+
+		cout << "Deleting connection between devices " << identity1 << " and " << identity2 << endl;
+
+		t v1 = getNodeInfo(identity1);
+		t v2 = getNodeInfo(identity2);
+
+		if (!isEmpty()) {
+
+			typename list<pair<t, double>>::iterator ptr;
+			typename list<pair<t, double>>::iterator ptr1;
+			pair<t, double> p1;
+			pair<t, double> p2;
+			p1.first = v2;
+			p1.second = distancecalc(v2, v1);
+			p2.first = v1;
+			p2.second = distancecalc(v1, v2);
+			typename vector<gnode<t>>::iterator temp;
+			temp = graph.begin();
+
+			if (v1.identity != -1 && v2.identity != -1) {			//valid vertics
+
+				if (!dir) {		//undirected graph
+					//																						 v2
+					ptr = find(graph[v1.identity].adj_vertics.begin(), graph[v1.identity].adj_vertics.end(), p1); //deleting v2 from v1		(searching v2 in list of v1)
+					if (ptr != graph[v1.identity].adj_vertics.end())
+						graph[v1.identity].adj_vertics.erase(ptr);
+					//																						  v1
+					ptr1 = find(graph[v2.identity].adj_vertics.begin(), graph[v2.identity].adj_vertics.end(), p2); //deleting v1 from v2
+					if (ptr1 != graph[v2.identity].adj_vertics.end())
+						graph[v2.identity].adj_vertics.erase(ptr1);			//	identity = index
+
+					cout << "Edge deleted" << endl;
+
+				}
+				else {			//directed
+
+					ptr = find(graph[v1.identity].adj_vertics.begin(), graph[v1.identity].adj_vertics.end(), p1); //deleting v2 from v1
+					if (ptr != graph[v1.identity].adj_vertics.end())
+						graph[v1.identity].adj_vertics.erase(ptr);
+
+				}
+
+			}
+			else {
+
+				cout << "Invalid vertics" << endl;
+			}
+
+		}
+		else { cout << "Empty graph" << endl; }
+	}
+
+	void checkIfconnected() {
+
+		for (int i = 0; i < graph.size(); i++) {
+
+			if (graph[i].adj_vertics.size() == 0) {		//loner
+				connected = false;
+				break;
+			}
+			else
+				connected = true;
+		}
+
+	}
+
+	t searchVer(int identity) {
+
+		// cout << "Searching for device " << identity << endl;
+		t v = getNodeInfo(identity);
+
+		if (!isEmpty()) {
+
+			//if (v.identity != -1)	//found
+			//{
+				//cout << "Device found!!" << endl;
+			//	return v;
+			//}
+			//else {
+
+				//cout << "Device not present in Network." << endl;
+				return v;
+			//}
+		}
+		else { 
+			cout << "Empty graph" << endl; 
+		}
+
+	}
+
+	nodeinfo startvertex() {
+		nodeinfo n;
+		n.setId(-1);
+
+		for (int i = 0; i < graph.size(); i++) {
+
+			if (!graph[i].adj_vertics.empty()) {
+				return graph[i].vertex;
+			}
+		}
+		return n;
+	}
+
+	void markNodeVisited(t v) {
+
+		// this function marks a node visited by rasing it from node list
+
+		//		 nodeinfo type list
+		typename list<t>::iterator temp;
+		temp = find(nodelist.begin(), nodelist.end(), v); //looks for vetex in node list
+
+		if (temp != nodelist.end()) { //node found //node unvisited
+
+			nodelist.erase(temp);	  //node visited
+		}
+	}
+
+	nodeinfo nextVertex(nodeinfo v) {
+
+		nodeinfo n;
+		n.setId(-1);
+		int index = -1;
+		typename list<pair<nodeinfo, double>>::iterator temp;	//for traversal in adj_vertics
+		typename list<nodeinfo>::iterator temp1;
+		for (int i = 0; i < graph.size(); i++) {
+			if (graph[i].vertex.identity == v.identity) {
+				index = i;
+			}
+		}
+		if (index > -1) {	//device exists in network
+
+			if (!graph[index].adj_vertics.empty()) {	//check if loner
+
+				temp = graph[index].adj_vertics.begin();
+
+				while (temp != graph[index].adj_vertics.end()) {
+
+					temp1 = find(nodelist.begin(), nodelist.end(), temp->first);
+					if (temp1 != nodelist.end()) { //found a unvisited node
+						return temp->first;
+					}
+					temp++;
+				}
+
+				//this code will execute if nothing is retured in the above while loop
+				//i.e there is no UNVISITED node in adj_vertics of given node
+
+				return n;
+			}
+			else {
+				return n; //has no adjacent vertics
+			}
+		}
+	}
+
+	vector<nodeinfo> getAdjvertices(nodeinfo v) {
+
+		int	index = -1;
+
+		vector<nodeinfo> adjv;
+
+		for (int i = 0; i < graph.size(); i++) {
+			if (graph[i].vertex.identity == v.identity) {
+				index = i;
+			}
+		}
+
+		if (index > -1) {
+
+			if (!graph[index].adj_vertics.empty()) {
+
+				typename list<pair<nodeinfo, double>>::iterator temp;
+				typename list<nodeinfo>::iterator temp1;
+
+				temp = graph[index].adj_vertics.begin();
+
+				while (temp != graph[index].adj_vertics.end()) {
+
+					temp1 = find(nodelist.begin(), nodelist.end(), temp->first);
+					if (temp1 != nodelist.end()) { //found a unvisited node
+						adjv.push_back(temp->first);
+					}
+					temp++;
+				}
+				return adjv; //if empty has no adj unvisited vertics
+			}
+			else {
+				return adjv; //has no adjacent vertics
+			}
+		}
+	}
+
+	//traversal
+	void dfs() {
+	cout << "DFS called " << endl;
+	int index = -1;
+	stack<int> staack;
+	int count = 0;
+	int sizer = graph.size();
+	if (sizer > 0) { //graph is not empty
+		for (int i = 0; i < sizer; i++) {
+
+			nodelist.push_back(graph[i].vertex); //preparing list of vertics
+
+		}
+
+		//starting vertex 
+		nodeinfo startv = startvertex();
+
+		if (startv.identity != -1) {
+			staack.push(startv.identity);
+
+			markNodeVisited(startv);		//mark node as visited
+			nodeinfo nextv = nextVertex(startv);	// to get next vertex
+
+			while (count < graph.size()) {
+				if (nextv.identity != -1) {			//next adj vertex found
+					staack.push(nextv.identity);
+					markNodeVisited(nextv);			//mark node as visited
+					nextv = nextVertex(nextv);		// to get next vertex
+				}
+				else { //no adj vertex found
+
+					nextv = getNodeInfo(staack.top()); //top element of stack
+					cout << " -> " << nextv.identity ;
+					count++;
+					staack.pop(); //pop stack
+					if (!staack.empty()) {
+						nextv = getNodeInfo(staack.top());
+						nextv = nextVertex(nextv);
+					}	// to get next vertex
+				}
+			}
+		}
+		else {
+
+			cout << "Disconnected graph" << endl; //only has vertics, no edges
+		}
+	}
+	else {
+
+		cout << "Empty graph" << endl;
+	}
+}
+
+	void bfs() {
+	cout << "BFS called " << endl;
+	int index = -1;
+	queue<nodeinfo> q;
+	vector<nodeinfo> adjv;
+	int count = 0;
+	int sizer = graph.size();
+	if (sizer > 0) {							 //graph is not empty
+		for (int i = 0; i < sizer; i++) {
+
+			nodelist.push_back(graph[i].vertex); //preparing list of vertics
+		}
+
+		//starting vertex 
+		nodeinfo startv = startvertex();		 //this vertex would surely have adjacent vertics if any in graph
+		if (startv.identity != -1) {
+			q.push(startv);
+			markNodeVisited(startv);
+			nodeinfo nextv = q.front();
+			cout << " -> " << nextv.identity ;
+			count++;
+			q.pop();
+			adjv = getAdjvertices(nextv);
+
+			while (count < sizer) {
+				if (!adjv.empty()) { //has adjv
+					for (int i = 0; i < adjv.size(); i++) {
+						q.push(adjv[i]);
+						markNodeVisited(adjv[i]); //adjv pushed in stack
+					}
+					nextv = q.front();
+					cout << " -> " << nextv.identity ;
+					count++;
+					q.pop();
+					adjv = getAdjvertices(nextv);
+				}
+				else { //no adjv
+					if (!q.empty()) {
+						nextv = q.front();
+						cout << " -> " << nextv.identity ;
+						count++;
+						q.pop();
+						adjv = getAdjvertices(nextv);
+					}
+				}
+			}
+		}
+		else {
+
+			cout << "Disconnected graph" << endl;	//no vertex has adj list
+		}
+	}
+	else {
+
+		cout << "Empty graph" << endl;
+	}
+}
+
+};
+
+// INHERITENCE : class WirelessNetwork extends Graph
+
+class wirelessNetwork :public graph_al<nodeinfo> {
+	int const transmRange = 1;
+	int squareSize; //distribute points over
+	int noOfPoints; //No. of points
+public:
+	//default constr
+	wirelessNetwork() {
+
+		cout << " Loader called" << endl;
+		squareSize = 10;
+		noOfPoints = 1000;	//500
+
+		default_random_engine generator;
+		uniform_real_distribution<double> distribution(0.0, squareSize);
+		double num1, num2;
+
+		for (int i = 0; i < noOfPoints; i++) {
+
+			nodeinfo device;
+			//generating coordinates uniformly at random
+			num1 = distribution(generator);
+			num2 = distribution(generator);
+			//setting precision to 2 decimal places
+			device.x = floor(num1 * pow(10, 2)) / pow(10, 2);
+			device.y = floor(num2 * pow(10, 2)) / pow(10, 2);
+			//inserting devices in the square
+			insertVertex(device);
+
+		}
+
+		// function in graph class which connects all the vertices in some range
+		insertEdge(transmRange);
+
+		setAvgMaxDegree();
+
+		cout << " Network formed successfully. \n";
+		cout << " Max degree of Network : " << getMaxDegree() << endl;
+		cout << " Average degree of Network : " << getavgDegree() << endl;
+
+	}
+
+	//parameterised constructor
+	wirelessNetwork(bool type, int pointsNum, int sqrSize) {//have to write false specifying it is not a directed graph
+		default_random_engine generator;
+		uniform_real_distribution<double> distribution(0.0,sqrSize);
+		double num1, num2;
+		cout << " Parameterised Loader called" << endl;
+		squareSize = sqrSize;
+		noOfPoints = pointsNum;
+
+		for (int i = 0; i < noOfPoints; i++) {
+			nodeinfo device;
+			//generating coordinates uniformly at random
+			num1 = distribution(generator);
+			num2 = distribution(generator);
+			//setting precision to 2 decimal places
+			device.x = floor(num1 * pow(10, 2)) / pow(10, 2);
+			device.y = floor(num2 * pow(10, 2)) / pow(10, 2);
+			insertVertex(device);
+		}
+
+		insertEdge(transmRange);
+
+		setAvgMaxDegree();
+
+		cout << " Network formed successfully. \n";
+		cout << " Max degree of Network : " << getMaxDegree() << endl;
+		cout << " Average degree of Network : " << getavgDegree() << endl;
+
+	}
+
+	void displayVertics() {
+
+		cout << "Displaying Nodes in Network " << endl;
+
+		typename list<pair<nodeinfo, double>>::iterator ptr2;
+
+		for (int i = 0; i < graph.size(); i++) {
+
+			cout << "\n Device " << graph[i].vertex.identity << " at : (" << graph[i].vertex.x << "," << graph[i].vertex.y << ")" << " No. of Connections: " << " " << graph[i].adj_vertics.size();
+
+			ptr2 = graph[i].adj_vertics.begin();
+
+			for (int j = 0; j < graph[i].adj_vertics.size(); j++) {
+				cout << "\n Device : " << ptr2->first.identity << " Relative distance : " << ptr2->second << " from " << graph[i].vertex.identity;
+				ptr2++;
+			}
+			cout << endl;
+		}
+
+		typename list<nodeinfo>::iterator ptr = nodesNotInNetwork.begin();
+
+		cout << "\nNodes not in network: ";
+
+		for (int i = 0; i < nodesNotInNetwork.size(); i++) {
+
+			cout << ptr->identity << " ";
+			ptr++;
+		}
+		cout << endl;
+	}
+
+	void simulateProtocol() {
+
+		cout << "\n\n Simulating topology control protocol (XTC)" << endl;
+
+		int subsetLimit = 6; // Number of best neighbors to select
+
+		//typename list<pair<nodeinfo, double>> ::iterator itt;
+
+		for (int i = 0; i < graph.size(); i++) {					// 'i' is the active node
+
+			list<pair<nodeinfo, double>> bestNeighbors;				// List to store the best neighbors for every node
+			//itt = bestNeighbors.begin();
+
+			// Iterate over each node in the adjacency list of the active node
+			for (auto& neighbor : graph[i].adj_vertics) {
+				bestNeighbors.push_back(make_pair(neighbor.first, neighbor.second));
+			}
+
+			// Select the best neighbors based on a specific criterion (e.g., lowest distance)
+			// Sort the bestNeighbors list based on relative distance in ascending order
+			bestNeighbors.sort([](const pair<nodeinfo, double>& a, const pair<nodeinfo, double>& b) {
+				return a.second < b.second;
+				});
+
+			// Update the adjacency list with the subset of best neighbors
+			graph[i].adj_vertics.clear(); // Clear the adjacency list
+
+			auto it = bestNeighbors.begin();
+			for (int j = 0; j < min(subsetLimit, static_cast<int>(bestNeighbors.size())); j++) {
+				graph[i].adj_vertics.push_back(make_pair(it->first, it->second));
+				++it;
+			}
+		}
+		setAvgMaxDegree();
+		cout << " Max degree of Network : " << getMaxDegree() << endl;
+		cout << " Average degree of Network : " << getavgDegree() << endl;
+	}
+
+	//support function for compass routing
+	double calc_angle(nodeinfo &p1, nodeinfo &p2, nodeinfo &p3,double &angle) {
+
+		// angle p2p1p3													 (x)p1--------------------------p2(d)
+		//																	  -
+		//																		-
+		//																		 p3(v)
+
+		//first check if any node is being visited again (loop in path doesnot occur)
+
+		// if p3 in not in node list that means it is visited and then angle will not be calculated
+
+		// just a message would be returned indicating "NO PATH WAS FOUND"
+
+		if (find(nodelist.begin(), nodelist.end(), p3) == nodelist.end()) {
+
+			return -1;
+
+		}
+
+		// if p3 is in nodelist, that means it is not visited before so angle will be calculated and it would be marked visited
+		else {
+
+			angle = (atan2(p3.y - p1.y, p3.x - p1.x) - atan2(p2.y - p1.y, p2.x - p1.x)) * (180.0 / PI);
+
+			angle = abs(angle);
+
+			//cout << " Angle < " << p2.identity << " " << p1.identity << " " << p3.identity << " : " << angle << endl;
+
+			return angle ;
+		}
+
+	}
+
+	bool neighbors(nodeinfo n1, nodeinfo n2) {
+
+		typename list<pair<nodeinfo, double>> ::iterator ptr;
+		ptr = graph[n1.identity].adj_vertics.begin();
+
+		graph[n1.identity].neighborlist.clear();
+
+		// first copy all nodeinfos from adjacency list of s into a vector, then search for d in it
+		if (!(graph[n1.identity].adj_vertics.empty())) {
+
+			for (pair<nodeinfo, double> device : graph[n1.identity].adj_vertics) {
+				graph[n1.identity].neighborlist.push_back(device.first);										//extracting nodeinfos
+			}
+
+			typename list<nodeinfo> ::iterator ptr2;
+
+			ptr2 = find(graph[n1.identity].neighborlist.begin(), graph[n1.identity].neighborlist.end(), n2);		// look in neighbors of s for d
+			if (ptr2 != graph[n1.identity].neighborlist.end()) {		// address of d is found i.e d is neighbor of s
+				return true;
+			}
+			else {
+				return false;
+			}
+		}
+	}
+
+	//recursive function
+	bool rcompassRouting(nodeinfo &x, nodeinfo &d, string msg, vector<string>& path) {
+
+		nodeinfo v;
+
+		//if s and d are neighbors
+
+		if (neighbors(x,d)) {		// d is neighbor of s
+
+			path.push_back(to_string(d.identity));		//storing identities of path elements in an expandable array
+
+			d.setMsg(msg);
+
+			path.push_back(" -> PATH_END ");
+
+			return true;
+		}
+		else if ( !neighbors(x, d) ){
+
+			double angle;
+
+			// if s and d are not neighbors
+			// first find device 'v' with least angle <tsv, when v is found, call function again. 
+
+			typename list<pair<nodeinfo, double>> ::iterator ptr;
+
+			ptr = graph[x.identity].adj_vertics.begin();	//already declared before
+
+			vector<pair<double, nodeinfo>> angles;
+
+			// angle p2p1p3													 (x)p1 - - - - - - - - - - - - p2(d)
+			//																	  -
+			//																		-
+			//																		 p3(v)
+
+			while (ptr !=  graph[x.identity].adj_vertics.end()) {	
+
+				//for(pair<nodeinfo, double> node : graph[x.identity].adj_vertics ){
+
+				angle = calc_angle(x, d, ptr->first, angle);
+
+				if (angle != -1) {
+
+					angles.push_back(make_pair(angle, ptr->first));
+					ptr++;
+				}
+
+				//agar angle nh milta
+				else if (angle == -1) {
+
+					ptr++;	//look for next neighbor
+				}
+
+			}
+
+			if (angles.size() != 0) {
+				// picking smallest angle
+				int minindex = 0;
+				double min = angles[0].first;
+
+				for (int i = 0; i < angles.size();i++) {
+					if (angles[i].first <= min) {
+						min = angles[i].first;
+						minindex = i;
+					}
+				}
+				// nodeinfo found
+
+				v = angles[minindex].second;
+
+				path.push_back(to_string(v.identity) + (" -> "));
+
+				markNodeVisited(x);
+
+				rcompassRouting(v, d, msg, path);
+			}
+
+			else {
+				cout << "\n NO PATH COULD BE FOUND. \n";
+				return false;
+			}
+
+		}
+
+		return true;
+
+	}
+
+	bool compassRouting(nodeinfo &s, nodeinfo &d, string msg) {
+
+		bool flag = 0;
+
+		if (s.identity != d.identity) {
+
+			cout << "\n Device " << s.identity << " is trying to send msg \" " << msg << " \" to Device " << d.identity << "\n";
+
+			vector<string> path;
+			nodeinfo s1, d1;
+			s1 = searchVer(s.identity);
+			d1 = searchVer(d.identity);
+
+			typename list<nodeinfo> ::iterator ptr;
+			ptr = nodesNotInNetwork.begin();
+
+			cout << " Searching Device " << s.identity << " in connected Network...\n";	//checking in CONNECTED devices
+
+			ptr = find(nodesNotInNetwork.begin(), nodesNotInNetwork.end(), s);
+
+			if (s1.identity == -1) {		// it is not in graph
+
+				cout << " Device " << s.identity << " is not in Network; Compass Routing failed ...\n";
+				return false;
+
+			}
+			else if(ptr != nodesNotInNetwork.end()){
+
+				cout << " Device " << s.identity << " is not in connected Network; Compass Routing failed ...\n";
+				return false;
+			}
+			else {
+				cout << " Device " << s.identity << " found!!\n";
+				cout << " Searching Device " << d.identity << " in connected Network...\n";
+
+				ptr = find(nodesNotInNetwork.begin(), nodesNotInNetwork.end(), d);
+
+				if (d1.identity == -1) {		// it is not in graph
+
+					cout << " Device " << d.identity << " is not in Network; Compass Routing failed ...\n";
+					return false;
+
+				}
+				else if (ptr != nodesNotInNetwork.end()) {
+
+					cout << " Device " << d.identity << " is not in connected Network; Compass Routing failed ...\n";
+					return false;
+				}
+				else {	// both devices are in connected network
+					cout << " Device " << d.identity << " found!!\n";
+
+					//populating nodelist
+					nodelist.clear();
+					for (unsigned i = 0;i < graph.size();i++) {
+						nodelist.push_back(graph[i].vertex);
+					}
+
+					path.push_back(to_string(s.identity) + " -> ");
+
+					// if neighbors
+					if (neighbors(s, d)) {
+
+						path.push_back(to_string(d.identity));		//storing identities of path elements in an expandable array
+
+						d.setMsg(msg);
+
+						path.push_back(" -> PATH_END");
+
+						//displaying path before returning
+						cout << "\n\n Found path : ";
+						for (int i = 0; i < path.size(); i++) {
+							cout << path[i];
+						}
+						cout << endl << endl;
+
+						return true;
+					}
+					// if not neighbors
+					else {
+
+						flag = rcompassRouting(s, d, msg, path);
+
+						if (flag == false) {
+							return false;
+						}
+					}
+
+				}
+			}
+
+			//displaying path before returning
+			cout << "\n Found path : ";
+			for (int i = 0; i < path.size(); i++) {
+				cout << path[i];
+			}
+			cout << endl << endl;
+
+			if (flag == true) {
+				return true;
+			}
+			else return false;
+
+		}
+
+		else if (s.identity == d.identity){
+
+			cout << "\n Source and Destination cannot be same ..\n";
+			return false;
+		}
+
+	}
+
+};
+
+int  main() {
+	
+	wirelessNetwork n1;
+
+	n1.simulateProtocol();
+
+	//n1.displayVertics();
+
+	nodeinfo s1, d1;
+
+	s1 = n1.getNodeInfo(499);		// if device with id 499 is not in network, s1 will have id -1
+	d1 = n1.getNodeInfo(19);
+
+	cout << "\n Message fields before compass routing :\n";
+	s1.displayMsg();
+	d1.displayMsg();
+
+	bool flag1 = n1.compassRouting(s1, d1, " Hello Device ! ");
+
+	cout << " Message sent successfully : " << flag1 << "\n";
+
+	d1.displayMsg();
+
+	bool flag2 = n1.compassRouting(d1, s1, " Hi !");
+
+	cout << " Message sent successfully : " << flag2 << "\n";
+
+	s1.displayMsg();
+
+	return 0;
+
+}

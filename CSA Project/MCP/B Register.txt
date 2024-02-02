@@ -1,0 +1,20 @@
+module Breg(
+	 input clk,
+	 input rst,
+    input [31:0] in,
+    output [31:0] B_out
+    );
+
+	reg [31:0] B;
+  
+  always@(posedge clk or posedge rst)
+    begin
+      if (rst == 1)	
+        B <= 32'b x;
+      else
+        B <= in;
+	 end
+	 
+	assign B_out = B;
+	 
+endmodule
