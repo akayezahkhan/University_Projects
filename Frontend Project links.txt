@@ -1,3 +1,0 @@
-AIRBNB-APP: https://airbnb-app-three.vercel.app/
-API-FETCH-TASK: https://api-task-sigma.vercel.app/
-TO-DO-LIST: https://final-todo-app-two.vercel.app/
